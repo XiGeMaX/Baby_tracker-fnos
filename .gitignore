@@ -1,0 +1,6 @@
+dist/*.fpk
+packaging/baby-tracker/app/server/
+.build/
+__pycache__/
+*.pyc
+.DS_Store

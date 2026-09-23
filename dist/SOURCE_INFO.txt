@@ -1,0 +1,4 @@
+repository=https://github.com/XiGeMaX/Baby_tracker.git
+commit=0ec2108438d71a041dd3dabf9190f32df30bba9f
+built_at=2026-09-23T13:28:07Z
+fnpack_version=1.2.3

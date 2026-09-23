@@ -1,0 +1,14 @@
+{
+  ".url": {
+    "baby-tracker.main": {
+      "title": "Baby Tracker",
+      "icon": "images/icon_{0}.png",
+      "type": "iframe",
+      "protocol": "",
+      "gatewayPrefix": "/app/baby-tracker",
+      "gatewaySocket": "app.sock",
+      "url": "/app/baby-tracker",
+      "allUsers": true
+    }
+  }
+}

@@ -1,0 +1,4 @@
+#!/bin/bash
+
+set -u
+exec "$(dirname "$0")/main" install

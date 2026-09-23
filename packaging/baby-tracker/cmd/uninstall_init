@@ -1,0 +1,5 @@
+#!/bin/bash
+
+set -u
+"$(dirname "$0")/main" stop || true
+exit 0

@@ -1,0 +1,426 @@
+#!/bin/bash
+
+set -u
+
+SERVER_DIR="${TRIM_APPDEST}/server"
+GATEWAY_SOCKET="${TRIM_APPDEST}/app.sock"
+DATA_DIR="${TRIM_PKGVAR}/data"
+SHARE_DATA_DIR=""
+VENV_DIR="${TRIM_PKGVAR}/venv"
+REQ_FILE="${SERVER_DIR}/requirements-fnos.txt"
+WHEELHOUSE="${SERVER_DIR}/wheelhouse"
+SECRET_FILE="${TRIM_PKGETC}/secret_key"
+PORT_FILE="${TRIM_PKGETC}/service_port"
+BIND_ADDRESS_FILE="${TRIM_PKGETC}/bind_address"
+INIT_MARKER="${TRIM_PKGETC}/app_initialized"
+LOG_FILE="${TRIM_PKGVAR}/app.log"
+PID_FILE="${TRIM_PKGVAR}/app.pid"
+RUNTIME_BIN_DEFAULT="/var/apps/python312/target/bin"
+
+log_msg() {
+    printf '%s - %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" >> "${LOG_FILE}"
+}
+
+fail() {
+    log_msg "ERROR: $1"
+    if [ -n "${TRIM_TEMP_LOGFILE:-}" ]; then
+        printf '%s\n' "$1" > "${TRIM_TEMP_LOGFILE}"
+    fi
+    exit 1
+}
+
+find_python() {
+    local candidate
+    for candidate in "${RUNTIME_BIN_DEFAULT}/python3" "${RUNTIME_BIN_DEFAULT}/python3.12"; do
+        if [ -x "${candidate}" ]; then
+            printf '%s' "${candidate}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+fix_ownership() {
+    if [ "$(id -u)" -eq 0 ] && [ -n "${TRIM_UID:-}" ] && [ -n "${TRIM_GID:-}" ]; then
+        chown -R "${TRIM_UID}:${TRIM_GID}" "$@" >> "${LOG_FILE}" 2>&1 || true
+    fi
+}
+
+map_data_dir() {
+    local share_paths first_share current_target
+    share_paths="${TRIM_DATA_SHARE_PATHS:-}"
+    first_share="${share_paths%%:*}"
+
+    [ -n "${first_share}" ] || fail "未提供 data-share 共享目录。"
+    SHARE_DATA_DIR="${first_share}"
+    mkdir -p "${TRIM_PKGVAR}" "${SHARE_DATA_DIR}" || fail "无法创建 data-share 共享目录。"
+
+    if [ -L "${DATA_DIR}" ]; then
+        current_target="$(readlink "${DATA_DIR}")"
+        [ "${current_target}" = "${SHARE_DATA_DIR}" ] || fail "数据目录映射异常，请卸载应用后重新安装。"
+    else
+        if [ -d "${DATA_DIR}" ]; then
+            rmdir "${DATA_DIR}" 2>/dev/null || fail "检测到旧数据目录，请卸载应用后重新安装。"
+        elif [ -e "${DATA_DIR}" ]; then
+            fail "检测到旧数据目录，请卸载应用后重新安装。"
+        fi
+        ln -s "${SHARE_DATA_DIR}" "${DATA_DIR}" || fail "无法将数据目录映射到 data-share。"
+    fi
+
+    log_msg "Data directory mapped to shared path: ${SHARE_DATA_DIR}"
+}
+
+sha256_file() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$1" | awk '{print $1}'
+    else
+        return 1
+    fi
+}
+
+valid_port() {
+    local port="$1"
+    case "${port}" in
+        ''|*[!0-9]*)
+            return 1
+            ;;
+    esac
+    [ "${port}" -ge 1024 ] && [ "${port}" -le 65535 ]
+}
+
+resolve_port() {
+    local port="${wizard_port:-}"
+    if [ -z "${port}" ] && [ -r "${PORT_FILE}" ]; then
+        port="$(head -n 1 "${PORT_FILE}" | tr -d '[:space:]')"
+    fi
+    if [ -z "${port}" ]; then
+        port="${TRIM_SERVICE_PORT:-8964}"
+    fi
+    valid_port "${port}" || fail "服务端口无效：应为 1024-65535 之间的数字。"
+    printf '%s' "${port}"
+}
+
+write_port_file() {
+    local port="$1" temp_file
+    mkdir -p "${TRIM_PKGETC}"
+    temp_file="${PORT_FILE}.tmp.$$"
+    umask 077
+    printf '%s\n' "${port}" > "${temp_file}" || fail "无法保存服务端口。"
+    mv "${temp_file}" "${PORT_FILE}" || fail "无法保存服务端口。"
+    chmod 600 "${PORT_FILE}"
+    fix_ownership "${PORT_FILE}"
+}
+
+normalize_bind_address() {
+    local value="$1" python_bin
+    python_bin="$(find_python)" || return 1
+    BIND_ADDRESS_VALUE="${value}" "${python_bin}" - <<'PY'
+import ipaddress
+import os
+
+raw = os.environ.get("BIND_ADDRESS_VALUE", "").strip()
+try:
+    address = ipaddress.ip_address(raw)
+except ValueError:
+    raise SystemExit(1)
+if (
+    address.version != 4
+    or address.is_unspecified
+    or address.is_loopback
+    or address.is_multicast
+    or address.is_global
+):
+    raise SystemExit(1)
+print(str(address))
+PY
+}
+
+local_ipv4_addresses() {
+    local python_bin
+    python_bin="$(find_python)" || return 1
+    "${python_bin}" - <<'PY'
+import ipaddress
+import shutil
+import subprocess
+
+
+def command_output(command):
+    try:
+        return subprocess.check_output(command, text=True, stderr=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+addresses = []
+ip_command = shutil.which("ip")
+if ip_command:
+    output = command_output([ip_command, "-o", "-4", "addr", "show", "scope", "global"])
+    for line in output.splitlines():
+        parts = line.split()
+        if len(parts) >= 4:
+            addresses.append(parts[3].split("/", 1)[0])
+
+if not addresses:
+    addresses.extend(command_output(["hostname", "-I"]).split())
+
+seen = set()
+for value in addresses:
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        continue
+    if address.version != 4 or address.is_unspecified or address.is_loopback:
+        continue
+    rendered = str(address)
+    if rendered not in seen:
+        seen.add(rendered)
+        print(rendered)
+PY
+}
+
+validate_local_bind_address() {
+    local address="$1" addresses
+    addresses="$(local_ipv4_addresses)" || return 1
+    printf '%s\n' "${addresses}" | grep -Fxq "${address}"
+}
+
+write_bind_address_file() {
+    local address="$1" temp_file
+    mkdir -p "${TRIM_PKGETC}"
+    temp_file="${BIND_ADDRESS_FILE}.tmp.$$"
+    umask 077
+    printf '%s\n' "${address}" > "${temp_file}" || fail "无法保存监听地址。"
+    mv "${temp_file}" "${BIND_ADDRESS_FILE}" || fail "无法保存监听地址。"
+    chmod 600 "${BIND_ADDRESS_FILE}"
+    fix_ownership "${BIND_ADDRESS_FILE}"
+}
+
+resolve_bind_address() {
+    local address="${wizard_bind_address:-}" normalized
+    if [ -z "${address}" ] && [ -r "${BIND_ADDRESS_FILE}" ]; then
+        address="$(head -n 1 "${BIND_ADDRESS_FILE}" | tr -d '[:space:]')"
+    fi
+    [ -n "${address}" ] || fail "缺少服务绑定地址，请卸载应用后重新安装并完成安装向导。"
+    normalized="$(normalize_bind_address "${address}")" || fail "监听地址无效：请输入 NAS 局域网 IPv4 地址。"
+    validate_local_bind_address "${normalized}" || fail "监听地址不是本机网卡地址：${normalized}"
+    write_bind_address_file "${normalized}"
+    printf '%s' "${normalized}"
+}
+
+validate_install_values() {
+    local port
+    mkdir -p "${TRIM_PKGVAR}" "${TRIM_PKGETC}"
+
+    port="${wizard_port:-}"
+
+    valid_port "${port}" || fail "服务端口无效：应为 1024-65535 之间的数字。"
+
+    write_port_file "${port}"
+    local bind_address normalized
+    bind_address="${wizard_bind_address:-}"
+    [ -n "${bind_address}" ] || fail "请输入 NAS 局域网监听地址。"
+    normalized="$(normalize_bind_address "${bind_address}")" || fail "监听地址无效：请输入本机局域网 IPv4 地址，不能使用 0.0.0.0、127.0.0.1 或公网地址。"
+    validate_local_bind_address "${normalized}" || fail "监听地址不是本机网卡地址：${normalized}"
+    write_bind_address_file "${normalized}"
+}
+
+bootstrap_database() {
+    [ -f "${INIT_MARKER}" ] && return 0
+
+    log_msg "Initializing application database..."
+    env \
+        BABY_TRACKER_DATA_DIR="${DATA_DIR}" \
+        "${VENV_DIR}/bin/python" "${SERVER_DIR}/bootstrap.py" >> "${LOG_FILE}" 2>&1 \
+        || fail "初始化应用数据库失败。"
+    umask 077
+    : > "${INIT_MARKER}" || fail "无法保存应用初始化状态。"
+    chmod 600 "${INIT_MARKER}"
+    fix_ownership "${INIT_MARKER}"
+}
+
+check_process() {
+    local pid="$1"
+    [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null
+}
+
+status_process() {
+    if [ -r "${PID_FILE}" ]; then
+        local pid
+        pid="$(head -n 1 "${PID_FILE}" | tr -d '[:space:]')"
+        if check_process "${pid}"; then
+            return 0
+        fi
+        rm -f "${PID_FILE}"
+    fi
+    return 1
+}
+
+prepare_runtime() {
+    map_data_dir
+    mkdir -p "${TRIM_PKGVAR}" "${TRIM_PKGETC}" "${DATA_DIR}" "${TRIM_PKGTMP}"
+    fix_ownership "${TRIM_PKGVAR}" "${TRIM_PKGETC}" "${TRIM_PKGTMP}"
+    if [ -z "${SHARE_DATA_DIR}" ]; then
+        fix_ownership "${DATA_DIR}"
+    fi
+
+    local python_bin
+    python_bin="$(find_python)" || fail "未找到 python312 运行时；请确认应用依赖已正确安装。"
+    resolve_bind_address >/dev/null
+
+    if [ ! -s "${SECRET_FILE}" ]; then
+        umask 077
+        "${python_bin}" -c 'import secrets; print(secrets.token_urlsafe(48))' > "${SECRET_FILE}" || fail "无法生成应用密钥。"
+        chmod 600 "${SECRET_FILE}"
+        fix_ownership "${SECRET_FILE}"
+    fi
+
+    [ -r "${REQ_FILE}" ] || fail "缺少 Python 依赖清单。"
+    [ -d "${WHEELHOUSE}" ] || fail "缺少离线 Python wheelhouse。"
+
+    local req_hash stamp_file
+    req_hash="$(sha256_file "${REQ_FILE}")" || fail "无法计算依赖清单校验值。"
+    stamp_file="${VENV_DIR}/.requirements.sha256"
+
+    if [ -x "${VENV_DIR}/bin/python" ] && [ -r "${stamp_file}" ] && [ "$(cat "${stamp_file}")" = "${req_hash}" ]; then
+        if "${VENV_DIR}/bin/python" -c 'import flask, gunicorn, werkzeug, PIL' >/dev/null 2>&1; then
+            bootstrap_database
+            return 0
+        fi
+    fi
+
+    log_msg "Preparing Python virtual environment..."
+    rm -rf "${VENV_DIR}"
+    "${python_bin}" -m venv "${VENV_DIR}" >> "${LOG_FILE}" 2>&1 || fail "创建 Python 虚拟环境失败。"
+    "${VENV_DIR}/bin/python" -m pip install \
+        --disable-pip-version-check \
+        --no-index \
+        --only-binary=:all: \
+        --find-links "${WHEELHOUSE}" \
+        -r "${REQ_FILE}" >> "${LOG_FILE}" 2>&1 || fail "安装离线 Python 依赖失败。"
+    fix_ownership "${VENV_DIR}"
+    printf '%s' "${req_hash}" > "${stamp_file}"
+    log_msg "Python runtime is ready."
+    bootstrap_database
+}
+
+start_process() {
+    status_process && return 0
+    prepare_runtime
+
+    local secret_key
+    secret_key="$(cat "${SECRET_FILE}")"
+
+    local service_port
+    service_port="$(resolve_port)"
+
+    local bind_address
+    bind_address="$(resolve_bind_address)"
+
+    log_msg "Starting Baby Tracker on ${bind_address}:${service_port}..."
+    cd "${SERVER_DIR}" || fail "应用目录不存在。"
+    if [ -S "${GATEWAY_SOCKET}" ]; then
+        rm -f "${GATEWAY_SOCKET}" || fail "无法清理旧的统一网关 Socket。"
+    fi
+    local launcher_path
+    launcher_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+    nohup env \
+        PATH="${RUNTIME_BIN_DEFAULT}:${PATH}" \
+        PYTHONUNBUFFERED=1 \
+        SECRET_KEY="${secret_key}" \
+        BABY_TRACKER_DATA_DIR="${DATA_DIR}" \
+        TRIM_APPDEST="${TRIM_APPDEST}" \
+        TRIM_PKGVAR="${TRIM_PKGVAR}" \
+        TRIM_PKGETC="${TRIM_PKGETC}" \
+        TRIM_PKGTMP="${TRIM_PKGTMP}" \
+        TRIM_DATA_SHARE_PATHS="${TRIM_DATA_SHARE_PATHS:-}" \
+        TRIM_UID="${TRIM_UID:-}" \
+        TRIM_GID="${TRIM_GID:-}" \
+        BABY_TRACKER_CMD_MAIN="${launcher_path}" \
+        BABY_TRACKER_BIND_ADDRESS="${bind_address}" \
+        BABY_TRACKER_SERVICE_PORT="${service_port}" \
+        "${VENV_DIR}/bin/gunicorn" \
+        --bind "unix:${GATEWAY_SOCKET}" \
+        --bind "${bind_address}:${service_port}" \
+        --workers 1 \
+        --threads 4 \
+        --timeout 120 \
+        --access-logfile - \
+        --error-logfile - \
+        --capture-output \
+        wsgi:application >> "${LOG_FILE}" 2>&1 &
+
+    local pid="$!"
+    printf '%s' "${pid}" > "${PID_FILE}"
+    sleep 1
+    if ! check_process "${pid}"; then
+        rm -f "${PID_FILE}"
+        fail "Baby Tracker 启动失败，请查看 ${LOG_FILE}。"
+    fi
+    log_msg "Baby Tracker started with PID ${pid}."
+    return 0
+}
+
+stop_process() {
+    if ! status_process; then
+        return 0
+    fi
+
+    local pid count
+    pid="$(head -n 1 "${PID_FILE}" | tr -d '[:space:]')"
+    log_msg "Stopping Baby Tracker PID ${pid}..."
+    kill -TERM "${pid}" 2>> "${LOG_FILE}" || true
+
+    count=0
+    while check_process "${pid}" && [ "${count}" -lt 15 ]; do
+        sleep 1
+        count=$((count + 1))
+    done
+
+    if check_process "${pid}"; then
+        log_msg "Process did not stop in time; sending KILL."
+        kill -KILL "${pid}" 2>> "${LOG_FILE}" || true
+    fi
+    rm -f "${PID_FILE}"
+    return 0
+}
+
+restart_process() {
+    sleep 1
+    stop_process
+    start_process
+}
+
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+case "${1:-}" in
+    install)
+        validate_install_values
+        prepare_runtime
+        ;;
+    prepare)
+        prepare_runtime
+        ;;
+    configure)
+        validate_install_values
+        ;;
+    start)
+        start_process
+        ;;
+    stop)
+        stop_process
+        ;;
+    restart)
+        restart_process
+        ;;
+    status)
+        if status_process; then
+            exit 0
+        fi
+        exit 3
+        ;;
+    *)
+        fail "未知命令: ${1:-}"
+        ;;
+esac
+fi
