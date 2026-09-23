@@ -23,7 +23,7 @@ die() {
 }
 
 ensure_source() {
-    if [ ! -d "${UPSTREAM_DIR}/.git" ]; then
+    if [ ! -e "${UPSTREAM_DIR}/.git" ]; then
         log "Cloning ${REPO_URL}"
         git clone "${REPO_URL}" "${UPSTREAM_DIR}"
     fi
