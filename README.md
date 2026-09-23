@@ -1,11 +1,18 @@
 # Baby Tracker for fnOS
 
+[![Download Latest FPK](https://img.shields.io/badge/Download-Latest%20FPK-0ea5e9?style=for-the-badge&logo=github)](https://github.com/XiGeMaX/Baby_tracker-fnos/releases/latest)
 [![fnOS](https://img.shields.io/badge/fnOS-native%20FPK-0f766e?style=flat-square)](#)
 [![Platform](https://img.shields.io/badge/platform-x86__64%20%7C%20arm64-334155?style=flat-square)](#)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](#)
 [![Upstream](https://img.shields.io/badge/upstream-Baby__tracker-181717?style=flat-square&logo=github)](https://github.com/XiGeMaX/Baby_tracker)
 
 这是 [XiGeMaX/Baby_tracker](https://github.com/XiGeMaX/Baby_tracker) 的飞牛 fnOS 原生 FPK 打包工程。应用直接运行 Flask/Gunicorn，不使用 Docker，并针对飞牛统一网关、账号体系、Python 3.12、设备架构和共享数据目录完成了适配。
+
+## 下载
+
+[**下载最新 FPK 安装包**](https://github.com/XiGeMaX/Baby_tracker-fnos/releases/latest) · [查看全部 Releases](https://github.com/XiGeMaX/Baby_tracker-fnos/releases)
+
+Release 由 GitHub Actions 在推送 `v*` 标签后自动构建和发布，安装包文件名固定为 `baby-tracker.fpk`，同时提供 SHA256 校验文件和构建来源信息。
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/XiGeMaX/Baby_tracker/main/screenshots/dashboard.png" alt="Baby Tracker dashboard" width="900">
@@ -44,7 +51,7 @@
 
 ### 使用 FPK
 
-本仓库构建后会在以下位置生成安装包：
+从[最新 Releases](https://github.com/XiGeMaX/Baby_tracker-fnos/releases/latest)下载 `baby-tracker.fpk`。如果自行构建，安装包会生成到以下位置：
 
 ```text
 dist/baby-tracker.fpk
@@ -145,6 +152,17 @@ FPK_OFFLINE_WHEELS=1 ./scripts/build.sh
 FNPACK_BIN=/path/to/fnpack ./scripts/build.sh
 ```
 
+### 自动发布
+
+发布标签必须与 `packaging/baby-tracker/manifest` 中的 `version` 一致。例如当前版本为 `1.6.2` 时：
+
+```bash
+git tag v1.6.2
+git push origin v1.6.2
+```
+
+标签推送后，[release.yml](.github/workflows/release.yml) 会执行构建、安装包测试、SHA256 生成，并将 FPK 自动上传到 GitHub Releases。也可以在 Actions 页面手动运行 `Build and Release FPK` 工作流。
+
 ## 测试
 
 ```bash
@@ -168,6 +186,7 @@ FNPACK_BIN=/path/to/fnpack ./scripts/build.sh
 
 ```text
 Baby_tracker-fnos/
+├── .github/workflows/release.yml   # 标签自动构建并发布 FPK
 ├── upstream/                       # Baby Tracker 上游源码，Git submodule
 ├── packaging/
 │   ├── baby-tracker/               # fnpack 应用包、Manifest、向导和生命周期脚本
