@@ -1,4 +1,5 @@
 dist/*.fpk
+dist/SOURCE_INFO.txt
 packaging/baby-tracker/app/server/
 .build/
 __pycache__/

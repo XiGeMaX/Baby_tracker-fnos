@@ -22,8 +22,18 @@ die() {
     exit 1
 }
 
+regex_matches() {
+    local pattern="$1" value="$2"
+    "${PYTHON_BIN:-python3}" - "${pattern}" "${value}" <<'PY'
+import re
+import sys
+
+raise SystemExit(0 if re.fullmatch(sys.argv[1], sys.argv[2]) else 1)
+PY
+}
+
 ensure_source() {
-    if [ ! -d "${UPSTREAM_DIR}/.git" ]; then
+    if [ ! -e "${UPSTREAM_DIR}/.git" ]; then
         log "Cloning ${REPO_URL}"
         git clone "${REPO_URL}" "${UPSTREAM_DIR}"
     fi
@@ -236,19 +246,19 @@ PY
     jq -e 'any(.[].items[]; .field == "wizard_port" and (([.rules[] | has("min") or has("max")] | any) | not) and any(.rules[]; has("pattern")))' "${PACK_DIR}/wizard/install" >/dev/null || die "Port wizard validation must use pattern-only numeric range rules."
     port_pattern="$(jq -r '.[].items[] | select(.field == "wizard_port") | .rules[] | select(.pattern != null) | .pattern' "${PACK_DIR}/wizard/install")"
     for port in 1024 8964 65535; do
-        printf '%s\n' "${port}" | grep -Eq "${port_pattern}" || die "Port pattern rejects ${port}."
+        regex_matches "${port_pattern}" "${port}" || die "Port pattern rejects ${port}."
     done
     for port in 1023 65536; do
-        if printf '%s\n' "${port}" | grep -Eq "${port_pattern}"; then
+        if regex_matches "${port_pattern}" "${port}"; then
             die "Port pattern accepts out-of-range value ${port}."
         fi
     done
     bind_pattern="$(jq -r '.[].items[] | select(.field == "wizard_bind_address") | .rules[] | select(.pattern != null) | .pattern' "${PACK_DIR}/wizard/install")"
     for address in '192.168.1.10' '10.1.2.3' '172.16.8.9'; do
-        printf '%s\n' "${address}" | grep -Eq "${bind_pattern}" || die "Bind address pattern rejects ${address}."
+        regex_matches "${bind_pattern}" "${address}" || die "Bind address pattern rejects ${address}."
     done
     for address in '999.1.1.1' '192.168.1.10/24' '192.168.1.10,10.0.0.1'; do
-        if printf '%s\n' "${address}" | grep -Eq "${bind_pattern}"; then
+        if regex_matches "${bind_pattern}" "${address}"; then
             die "Bind address pattern accepts invalid value ${address}."
         fi
     done
