@@ -54,7 +54,7 @@ ensure_fnpack() {
     target="${TOOLS_DIR}/${name}"
     if [ ! -x "${target}" ]; then
         url="https://static2.fnnas.com/fnpack/${name}"
-        log "Downloading ${name}"
+        printf '[build] Downloading %s\n' "${name}" >&2
         mkdir -p "${TOOLS_DIR}"
         curl -fL --retry 3 "${url}" -o "${target}"
         chmod +x "${target}"
