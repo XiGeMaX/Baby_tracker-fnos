@@ -9,4 +9,4 @@ The packaged frontend includes these unmodified runtime assets:
 - Chart.js 4.4.7 UMD build, MIT License.
   Source: https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js
 
-The upstream Baby_tracker application remains licensed under GPL-3.0; its license is bundled with the application payload.
+The original Baby_tracker application remains licensed under GPL-3.0; its license is bundled with the application payload.

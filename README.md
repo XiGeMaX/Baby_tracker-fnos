@@ -4,9 +4,11 @@
 [![fnOS](https://img.shields.io/badge/fnOS-native%20FPK-0f766e?style=flat-square)](#)
 [![Platform](https://img.shields.io/badge/platform-x86__64%20%7C%20arm64-334155?style=flat-square)](#)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](#)
-[![Upstream](https://img.shields.io/badge/upstream-Baby__tracker-181717?style=flat-square&logo=github)](https://github.com/XiGeMaX/Baby_tracker)
+[![Git Repository](https://img.shields.io/badge/git-Baby__tracker--fnos-181717?style=flat-square&logo=github)](https://github.com/XiGeMaX/Baby_tracker-fnos)
 
-这是 [XiGeMaX/Baby_tracker](https://github.com/XiGeMaX/Baby_tracker) 的飞牛 fnOS 原生 FPK 打包工程。应用直接运行 Flask/Gunicorn，不使用 Docker，并针对飞牛统一网关、账号体系、Python 3.12、设备架构和共享数据目录完成了适配。
+这是 Baby Tracker 的独立飞牛 fnOS 原生 FPK 仓库。飞牛适配源码直接保存在 `source/`，构建、测试和发布均在本仓库完成，不依赖 Docker 版仓库，两个版本可以独立演进。
+
+应用直接运行 Flask/Gunicorn，不使用 Docker，并针对飞牛统一网关、账号体系、Python 3.12、设备架构和共享数据目录完成了适配。
 
 ## 下载
 
@@ -15,7 +17,7 @@
 Release 由 GitHub Actions 在推送 `v*` 标签后自动构建和发布，安装包文件名固定为 `baby-tracker.fpk`，同时提供 SHA256 校验文件和构建来源信息。
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/XiGeMaX/Baby_tracker/main/screenshots/dashboard.png" alt="Baby Tracker dashboard" width="900">
+  <img src="source/screenshots/dashboard.png" alt="Baby Tracker dashboard" width="900">
 </p>
 
 ## 主要特性
@@ -119,21 +121,15 @@ appcenter-cli install-fpk dist/baby-tracker.fpk
 初始化源码并构建：
 
 ```bash
-git clone --recurse-submodules https://github.com/XiGeMaX/Baby_tracker-fnos.git
+git clone https://github.com/XiGeMaX/Baby_tracker-fnos.git
 cd Baby_tracker-fnos
 ./scripts/build.sh
 ```
 
-如果已经克隆但没有拉取子模块，可以执行：
-
-```bash
-git submodule update --init --recursive
-```
-
 构建脚本会完成以下操作：
 
-1. 使用 `upstream/` 中的 Baby Tracker 上游源码，必要时自动克隆。
-2. 复制上游运行文件并生成 fnOS 启动入口。
+1. 使用本仓库 `source/` 中的飞牛版源码。
+2. 复制飞牛版运行文件并生成 fnOS 启动入口。
 3. 注入飞牛账号鉴权和首次密码设置逻辑。
 4. 下载 x86_64 与 arm64 的 Python 3.12 wheelhouse。
 5. 校验 Manifest、安装向导、JSON、生命周期脚本和应用目录。
@@ -142,9 +138,6 @@ git submodule update --init --recursive
 常用构建选项：
 
 ```bash
-# 先更新 upstream 子模块
-FPK_UPDATE_SOURCE=1 ./scripts/build.sh
-
 # 使用现有 wheelhouse 离线重建
 FPK_OFFLINE_WHEELS=1 ./scripts/build.sh
 
@@ -169,7 +162,7 @@ git push origin v1.6.2
 ./scripts/test.sh
 ```
 
-测试会运行上游单元测试，并启动打包后的 Gunicorn/WSGI 应用，检查以下行为：
+测试会运行 `source/` 中的单元测试，并启动打包后的 Gunicorn/WSGI 应用，检查以下行为：
 
 - 飞牛网关登录、退出和会话建立。
 - 新安装数据库不包含默认本地管理员。
@@ -187,7 +180,7 @@ git push origin v1.6.2
 ```text
 Baby_tracker-fnos/
 ├── .github/workflows/release.yml   # 标签自动构建并发布 FPK
-├── upstream/                       # Baby Tracker 上游源码，Git submodule
+├── source/                         # 飞牛版源码，直接由本仓库管理
 ├── packaging/
 │   ├── baby-tracker/               # fnpack 应用包、Manifest、向导和生命周期脚本
 │   └── build-assets/               # WSGI、依赖清单、图标和前端运行时
@@ -210,8 +203,11 @@ Baby_tracker-fnos/
 - 管理员接口会继续执行应用内管理员角色检查。
 - `/api/ha/*` 必须携带管理员生成的有效 API Key。
 
-## 上游项目
+## 版本关系与上游
 
-- 上游应用：[XiGeMaX/Baby_tracker](https://github.com/XiGeMaX/Baby_tracker)
-- 上游许可证：[GNU GPL v3](https://github.com/XiGeMaX/Baby_tracker/blob/main/LICENSE)
+- 本仓库 `XiGeMaX/Baby_tracker-fnos` 是飞牛版的独立源码、构建和发布仓库。
+- Docker 版与原上游项目独立维护，本仓库不包含 submodule，也不会在构建时拉取或修改 Docker 版仓库。
+- `source/` 是从原始项目整理而来的飞牛适配源码快照，后续直接在 `Baby_tracker-fnos` 中迭代。
+- 原始项目：[XiGeMaX/Baby_tracker](https://github.com/XiGeMaX/Baby_tracker)。
+- 源码许可证：[GNU GPL v3](LICENSE)。
 - 本项目是第三方飞牛 fnOS 适配工程，不是飞牛官方项目。

@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+{% set active_page = 'admin' %}
+{% block title %}管理 - Baby Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-6 fade-in">
+    <div class="flex items-center justify-between">
+        <h1 class="text-xl font-semibold">管理</h1>
+        <a href="/" class="text-text-muted hover:text-text-secondary transition-colors text-sm flex items-center gap-1">
+            <i data-lucide="arrow-left" class="w-4 h-4"></i>
+            返回
+        </a>
+    </div>
+
+    <!-- 用户审批 -->
+    <div class="card space-y-4">
+        <div class="flex items-center gap-2 mb-1">
+            <i data-lucide="users" class="w-4 h-4 text-accent"></i>
+            <h2 class="text-sm font-medium text-text-secondary">用户管理</h2>
+            <span class="text-xs px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30" id="pending-badge" style="display:none">待审批</span>
+        </div>
+        <div id="users-list" class="space-y-2">
+            <p class="text-text-muted text-sm text-center py-4">加载中...</p>
+        </div>
+    </div>
+
+    <!-- 快速记录按钮配置 -->
+    <div class="card space-y-4">
+        <div class="flex items-center justify-between mb-1">
+            <div class="flex items-center gap-2">
+                <i data-lucide="zap" class="w-4 h-4 text-accent"></i>
+                <h2 class="text-sm font-medium text-text-secondary">快速记录按钮</h2>
+            </div>
+            <button class="btn-primary text-xs px-3 py-1.5" onclick="showAddButtonModal()">添加按钮</button>
+        </div>
+        <div id="buttons-list" class="space-y-2">
+            <p class="text-text-muted text-sm text-center py-4">加载中...</p>
+        </div>
+    </div>
+
+    <!-- 婴儿信息 -->
+    <div class="card space-y-4">
+        <div class="flex items-center gap-2 mb-1">
+            <i data-lucide="baby" class="w-4 h-4 text-accent"></i>
+            <h2 class="text-sm font-medium text-text-secondary">婴儿信息</h2>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label class="text-text-muted text-xs mb-1 block">姓名</label>
+                <input type="text" id="baby-name" class="input-field" placeholder="宝宝姓名">
+            </div>
+            <div>
+                <label class="text-text-muted text-xs mb-1 block">性别</label>
+                <select id="baby-gender" class="input-field">
+                    <option value="male">男</option>
+                    <option value="female">女</option>
+                </select>
+            </div>
+            <div>
+                <label class="text-text-muted text-xs mb-1 block">出生日期</label>
+                <input type="date" id="baby-birth" class="input-field font-mono">
+            </div>
+            <div>
+                <label class="text-text-muted text-xs mb-1 block">体重 (kg)</label>
+                <input type="number" id="baby-weight" class="input-field font-mono" step="0.1" min="0.5" max="10" placeholder="3.0">
+            </div>
+            <div>
+                <label class="text-text-muted text-xs mb-1 block">婴儿类型</label>
+                <label class="flex items-center gap-2 cursor-pointer h-[38px]">
+                    <input type="checkbox" id="baby-premature" class="w-4 h-4 rounded border-border bg-surface accent-teal-500">
+                    <span class="text-sm text-text-secondary">高危早产儿（增加6次专属随访）</span>
+                </label>
+            </div>
+        </div>
+        <button class="btn-primary text-sm" onclick="saveBaby()">保存信息</button>
+    </div>
+
+    <!-- 奶量设置 -->
+    <div class="card space-y-4">
+        <div class="flex items-center gap-2 mb-1">
+            <i data-lucide="flask-round" class="w-4 h-4 text-accent"></i>
+            <h2 class="text-sm font-medium text-text-secondary">奶量设置</h2>
+        </div>
+        <div>
+            <label class="text-text-muted text-xs mb-1 block">每日目标奶量 (ml)</label>
+            <input type="number" id="custom-target" class="input-field font-mono" placeholder="如 800" min="100" max="2000">
+        </div>
+        <div>
+            <label class="text-text-muted text-xs mb-1 block">每日预估喂养次数</label>
+            <input type="number" id="feeds-per-day" class="input-field font-mono" min="4" max="16" value="8">
+        </div>
+        <button class="btn-primary text-sm" onclick="saveSettings()">保存设置</button>
+    </div>
+
+    <!-- 数据管理 -->
+    <div class="card space-y-4">
+        <div class="flex items-center gap-2 mb-1">
+            <i data-lucide="database" class="w-4 h-4 text-accent"></i>
+            <h2 class="text-sm font-medium text-text-secondary">数据管理</h2>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div class="bg-base rounded-lg p-3 border border-border text-center">
+                <p class="counter-value text-lg text-text-primary" id="stat-records">0</p>
+                <p class="text-text-muted text-xs">总记录</p>
+            </div>
+            <div class="bg-base rounded-lg p-3 border border-border text-center">
+                <p class="counter-value text-lg text-text-primary" id="stat-feeds">0</p>
+                <p class="text-text-muted text-xs">喂养</p>
+            </div>
+            <div class="bg-base rounded-lg p-3 border border-border text-center">
+                <p class="counter-value text-lg text-text-primary" id="stat-ml">0</p>
+                <p class="text-text-muted text-xs">总奶量</p>
+            </div>
+            <div class="bg-base rounded-lg p-3 border border-border text-center">
+                <p class="counter-value text-lg text-text-primary" id="stat-days">0</p>
+                <p class="text-text-muted text-xs">天数</p>
+            </div>
+            <div class="bg-base rounded-lg p-3 border border-border text-center">
+                <p class="counter-value text-lg text-amber-400" id="stat-pending">0</p>
+                <p class="text-text-muted text-xs">待审批</p>
+            </div>
+        </div>
+        <div class="flex gap-3 flex-wrap">
+            <button class="btn-secondary text-sm flex items-center gap-2" onclick="exportCSV()">
+                <i data-lucide="download" class="w-4 h-4"></i> 导出 CSV
+            </button>
+            <button class="btn-secondary text-sm flex items-center gap-2" onclick="backupExport()">
+                <i data-lucide="hard-drive-download" class="w-4 h-4"></i> 备份数据
+            </button>
+            <button class="btn-secondary text-sm flex items-center gap-2" onclick="showRestoreModal()">
+                <i data-lucide="hard-drive-upload" class="w-4 h-4"></i> 恢复备份
+            </button>
+            <button class="btn-danger text-sm flex items-center gap-2" onclick="clearData()">
+                <i data-lucide="trash-2" class="w-4 h-4"></i> 清除记录
+            </button>
+        </div>
+    </div>
+
+    <!-- 操作日志 -->
+    <div class="card space-y-4">
+        <div class="flex items-center justify-between mb-1">
+            <div class="flex items-center gap-2">
+                <i data-lucide="scroll-text" class="w-4 h-4 text-accent"></i>
+                <h2 class="text-sm font-medium text-text-secondary">操作日志</h2>
+            </div>
+            <button class="text-xs text-text-muted hover:text-accent transition-colors" onclick="loadLogs()">刷新</button>
+        </div>
+        <div id="audit-logs" class="space-y-1 max-h-96 overflow-y-auto">
+            <p class="text-text-muted text-sm text-center py-4">加载中...</p>
+        </div>
+    </div>
+
+    <!-- HA 接口配置向导 -->
+    <div class="card space-y-4">
+        <div class="flex items-center gap-2 mb-1">
+            <i data-lucide="home" class="w-4 h-4 text-accent"></i>
+            <h2 class="text-sm font-medium text-text-secondary">Home Assistant 集成</h2>
+        </div>
+
+        <!-- 步骤1: 生成密钥 -->
+        <div class="bg-base rounded-lg p-3 border border-border space-y-2">
+            <div class="flex items-center gap-2">
+                <span class="w-5 h-5 rounded-full bg-accent/20 text-accent text-xs flex items-center justify-center font-bold">1</span>
+                <span class="text-sm text-text-primary font-medium">生成 API 密钥</span>
+            </div>
+            <div class="flex gap-2">
+                <input type="text" id="ha-api-key" class="input-field font-mono text-xs flex-1" readonly placeholder="点击右侧按钮生成">
+                <button class="btn-secondary text-xs px-3 py-1.5 whitespace-nowrap" onclick="copyHaApiKey()">复制</button>
+                <button class="btn-primary text-xs px-3 py-1.5 whitespace-nowrap" onclick="generateHaApiKey()">生成</button>
+            </div>
+            <p class="text-[10px] text-text-muted">快速记录接口的认证凭证，生成后旧密钥立即失效</p>
+        </div>
+
+        <!-- 步骤2: 填写地址 -->
+        <div class="bg-base rounded-lg p-3 border border-border space-y-2">
+            <div class="flex items-center gap-2">
+                <span class="w-5 h-5 rounded-full bg-accent/20 text-accent text-xs flex items-center justify-center font-bold">2</span>
+                <span class="text-sm text-text-primary font-medium">填写服务地址</span>
+            </div>
+            <div class="flex gap-2 items-end">
+                <div class="flex-1">
+                    <label class="text-text-muted text-[10px] mb-0.5 block">IP 地址</label>
+                    <input type="text" id="ha-host" class="input-field font-mono text-xs" placeholder="192.168.1.100" value="">
+                </div>
+                <div class="w-20">
+                    <label class="text-text-muted text-[10px] mb-0.5 block">端口</label>
+                    <input type="number" id="ha-port" class="input-field font-mono text-xs" value="8964">
+                </div>
+            </div>
+            <p class="text-[10px] text-text-muted">Baby Tracker 在局域网中的访问地址，HA 需能访问此地址</p>
+        </div>
+
+        <!-- 步骤3: 勾选实体 -->
+        <div class="bg-base rounded-lg p-3 border border-border space-y-2">
+            <div class="flex items-center gap-2">
+                <span class="w-5 h-5 rounded-full bg-accent/20 text-accent text-xs flex items-center justify-center font-bold">3</span>
+                <span class="text-sm text-text-primary font-medium">选择需要的实体</span>
+            </div>
+            <p class="text-[10px] text-text-muted">传感器（只读）和开关（可记录）按需勾选</p>
+
+            <div class="space-y-1">
+                <p class="text-xs text-text-secondary font-medium">传感器</p>
+                <label class="flex items-center gap-2 py-1 cursor-pointer">
+                    <input type="checkbox" class="ha-entity accent-accent" data-type="sensor" data-id="status" checked>
+                    <span class="text-xs text-text-primary">今日奶量概览</span>
+                    <span class="text-[10px] text-text-muted">— 奶量/次数/排泄/进度</span>
+                </label>
+                <label class="flex items-center gap-2 py-1 cursor-pointer">
+                    <input type="checkbox" class="ha-entity accent-accent" data-type="sensor" data-id="feed-today">
+                    <span class="text-xs text-text-primary">今日喂养详情</span>
+                    <span class="text-[10px] text-text-muted">— 每次喂养明细</span>
+                </label>
+                <label class="flex items-center gap-2 py-1 cursor-pointer">
+                    <input type="checkbox" class="ha-entity accent-accent" data-type="sensor" data-id="last-feed">
+                    <span class="text-xs text-text-primary">上次喂养</span>
+                    <span class="text-[10px] text-text-muted">— 时间/类型/量</span>
+                </label>
+                <label class="flex items-center gap-2 py-1 cursor-pointer">
+                    <input type="checkbox" class="ha-entity accent-accent" data-type="sensor" data-id="excrete-today">
+                    <span class="text-xs text-text-primary">今日排泄</span>
+                    <span class="text-[10px] text-text-muted">— 尿/便次数</span>
+                </label>
+            </div>
+
+            <div class="space-y-1">
+                <div class="flex items-center justify-between">
+                    <p class="text-xs text-text-secondary font-medium">快速记录开关</p>
+                    <button class="text-[10px] text-accent hover:underline" onclick="haToggleAllButtons()">全选/反选</button>
+                </div>
+                <div id="ha-button-checks" class="space-y-1">
+                    <p class="text-[10px] text-text-muted">加载中...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 步骤4: 生成配置 -->
+        <div class="bg-base rounded-lg p-3 border border-border space-y-2">
+            <div class="flex items-center gap-2">
+                <span class="w-5 h-5 rounded-full bg-accent/20 text-accent text-xs flex items-center justify-center font-bold">4</span>
+                <span class="text-sm text-text-primary font-medium">生成 HA 配置</span>
+            </div>
+            <button class="btn-primary text-xs w-full py-2" onclick="generateHaYaml()">生成配置代码</button>
+            <div class="relative">
+                <pre id="ha-yaml-output" class="bg-surface border border-border rounded-lg p-3 font-mono text-[11px] text-text-secondary overflow-x-auto max-h-80 overflow-y-auto whitespace-pre leading-relaxed select-all"># 点击上方按钮生成配置</pre>
+                <button class="absolute top-2 right-2 bg-accent/20 hover:bg-accent/30 text-accent text-xs px-2.5 py-1 rounded-md transition-colors" onclick="copyHaYaml()">复制</button>
+            </div>
+            <p class="text-[10px] text-text-muted">将生成的 YAML 粘贴到 HA 的 configuration.yaml 中，重启 HA 或调用 reload 即可生效</p>
+        </div>
+    </div>
+</div>
+
+<!-- 添加/编辑按钮弹窗 -->
+<div id="add-btn-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/60">
+    <div class="bg-surface border border-border rounded-xl p-6 w-96 max-w-[90vw]">
+        <h3 id="btn-modal-title" class="text-sm font-medium text-text-secondary mb-4">添加快速记录按钮</h3>
+        <div class="space-y-3">
+            <div>
+                <label class="text-text-muted text-xs mb-1 block">类型</label>
+                <select id="new-btn-type" class="input-field" onchange="updateSubTypes()">
+                    <option value="feed">喂养</option>
+                    <option value="excrete">排泄</option>
+                    <option value="symptom">症状</option>
+                    <option value="supplement">补充</option>
+                </select>
+            </div>
+            <div>
+                <label class="text-text-muted text-xs mb-1 block">子类型</label>
+                <select id="new-btn-subtype" class="input-field" onchange="onSubTypeChange()"></select>
+            </div>
+            <div id="custom-subtype-wrap" class="hidden">
+                <label class="text-text-muted text-xs mb-1 block">自定义子类型名称</label>
+                <input type="text" id="custom-subtype-input" class="input-field" placeholder="如：维D滴剂">
+            </div>
+            <div id="food-unit-wrap" class="hidden">
+                <label class="text-text-muted text-xs mb-1 block">辅食计量单位</label>
+                <div class="flex gap-2 items-center">
+                    <select id="btn-food-unit" class="input-field flex-1" onchange="onFoodUnitChange()">
+                        <option value="g">g (克)</option>
+                        <option value="勺">勺</option>
+                        <option value="块">块</option>
+                        <option value="_custom">自定义...</option>
+                    </select>
+                    <input type="text" id="btn-food-unit-custom" class="input-field flex-1 hidden" placeholder="如：ml、份">
+                </div>
+            </div>
+            <div>
+                <label class="text-text-muted text-xs mb-1 block">显示标签</label>
+                <input type="text" id="new-btn-label" class="input-field" placeholder="如：配方奶 90ml">
+            </div>
+            <div>
+                <label id="btn-amount-label" class="text-text-muted text-xs mb-1 block">预设量 (ml，0=不预设)</label>
+                <input type="number" id="new-btn-amount" class="input-field font-mono" value="0" min="0">
+            </div>
+            <div>
+                <label class="text-text-muted text-xs mb-1 block">排序</label>
+                <input type="number" id="new-btn-order" class="input-field font-mono" value="0" min="0">
+            </div>
+        </div>
+        <div class="flex gap-2 mt-4">
+            <button class="btn-secondary flex-1 text-sm" onclick="closeAddButtonModal()">取消</button>
+            <button id="btn-modal-submit" class="btn-primary flex-1 text-sm" onclick="addButton()">添加</button>
+        </div>
+    </div>
+</div>
+
+<!-- 恢复备份弹窗 -->
+<div id="restore-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/60">
+    <div class="bg-surface border border-border rounded-xl p-6 w-80 max-w-[90vw]">
+        <h3 class="text-sm font-medium text-text-secondary mb-3">恢复备份</h3>
+        <div class="space-y-3">
+            <div>
+                <label class="text-text-muted text-xs mb-1 block">选择备份文件 (.json)</label>
+                <input type="file" id="restore-file" accept=".json" class="input-field text-sm">
+            </div>
+            <div class="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+                <p class="text-xs text-red-400">注意：恢复备份将覆盖当前所有数据，此操作不可撤销！</p>
+            </div>
+        </div>
+        <div class="flex gap-2 mt-4">
+            <button class="btn-secondary flex-1 text-sm" onclick="closeRestoreModal()">取消</button>
+            <button class="btn-primary flex-1 text-sm" onclick="backupRestore()">恢复</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/admin.js" data-page-script></script>
+{% endblock %}

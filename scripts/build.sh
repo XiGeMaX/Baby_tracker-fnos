@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-UPSTREAM_DIR="${ROOT_DIR}/upstream"
+SOURCE_DIR="${ROOT_DIR}/source"
 PACK_DIR="${ROOT_DIR}/packaging/baby-tracker"
 ASSETS_DIR="${ROOT_DIR}/packaging/build-assets"
 SERVER_DIR="${PACK_DIR}/app/server"
@@ -11,7 +11,7 @@ WHEELHOUSE_DIR="${ASSETS_DIR}/wheelhouse"
 TOOLS_DIR="${ROOT_DIR}/tools"
 DIST_DIR="${ROOT_DIR}/dist"
 FNPACK_VERSION="1.2.3"
-REPO_URL="https://github.com/XiGeMaX/Baby_tracker.git"
+REPO_URL="https://github.com/XiGeMaX/Baby_tracker-fnos.git"
 
 log() {
     printf '[build] %s\n' "$1"
@@ -30,18 +30,6 @@ import sys
 
 raise SystemExit(0 if re.fullmatch(sys.argv[1], sys.argv[2]) else 1)
 PY
-}
-
-ensure_source() {
-    if [ ! -e "${UPSTREAM_DIR}/.git" ]; then
-        log "Cloning ${REPO_URL}"
-        git clone "${REPO_URL}" "${UPSTREAM_DIR}"
-    fi
-
-    if [ "${FPK_UPDATE_SOURCE:-0}" = "1" ]; then
-        log "Updating upstream checkout"
-        git -C "${UPSTREAM_DIR}" pull --ff-only
-    fi
 }
 
 ensure_fnpack() {
@@ -75,16 +63,16 @@ ensure_fnpack() {
 }
 
 stage_payload() {
-    log "Staging upstream application"
+    log "Staging fnOS source"
     rm -rf "${SERVER_DIR}"
     mkdir -p "${SERVER_DIR}/wheelhouse"
 
-    cp "${UPSTREAM_DIR}/app.py" "${SERVER_DIR}/app.py"
-    cp "${UPSTREAM_DIR}/requirements.txt" "${SERVER_DIR}/requirements-upstream.txt"
-    cp "${UPSTREAM_DIR}/LICENSE" "${SERVER_DIR}/LICENSE"
+    cp "${SOURCE_DIR}/app.py" "${SERVER_DIR}/app.py"
+    cp "${SOURCE_DIR}/requirements.txt" "${SERVER_DIR}/requirements-source.txt"
+    cp "${SOURCE_DIR}/LICENSE" "${SERVER_DIR}/LICENSE"
     cp "${ASSETS_DIR}/THIRD_PARTY_NOTICES.md" "${SERVER_DIR}/THIRD_PARTY_NOTICES.md"
-    cp -R "${UPSTREAM_DIR}/templates" "${SERVER_DIR}/templates"
-    cp -R "${UPSTREAM_DIR}/static" "${SERVER_DIR}/static"
+    cp -R "${SOURCE_DIR}/templates" "${SERVER_DIR}/templates"
+    cp -R "${SOURCE_DIR}/static" "${SERVER_DIR}/static"
     cp "${ASSETS_DIR}/setup-password.html" "${SERVER_DIR}/templates/setup-password.html"
     cp "${ASSETS_DIR}/wsgi.py" "${SERVER_DIR}/wsgi.py"
     cp "${ASSETS_DIR}/bootstrap.py" "${SERVER_DIR}/bootstrap.py"
@@ -273,14 +261,13 @@ PY
 
 main() {
     local fnpack_bin commit
-    ensure_source
     fnpack_bin="$(ensure_fnpack)"
     build_wheelhouse
     stage_payload
     validate_package
 
     mkdir -p "${DIST_DIR}"
-    commit="$(git -C "${UPSTREAM_DIR}" rev-parse HEAD)"
+    commit="$(git -C "${ROOT_DIR}" rev-parse HEAD 2>/dev/null || printf 'unknown')"
     {
         printf 'repository=%s\n' "${REPO_URL}"
         printf 'commit=%s\n' "${commit}"

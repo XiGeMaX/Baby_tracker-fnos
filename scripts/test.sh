@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-UPSTREAM_DIR="${ROOT_DIR}/upstream"
+SOURCE_DIR="${ROOT_DIR}/source"
 PACK_SERVER_DIR="${ROOT_DIR}/packaging/baby-tracker/app/server"
 BUILD_DIR="${ROOT_DIR}/.build"
 VENV_DIR="${BUILD_DIR}/test-venv"
@@ -28,7 +28,7 @@ if [ ! -x "${VENV_DIR}/bin/python" ]; then
     log "Creating test virtual environment"
     python3 -m venv "${VENV_DIR}"
 fi
-"${VENV_DIR}/bin/python" -m pip install --disable-pip-version-check -r "${UPSTREAM_DIR}/requirements.txt"
+"${VENV_DIR}/bin/python" -m pip install --disable-pip-version-check -r "${SOURCE_DIR}/requirements.txt"
 
 log "Validating fpk launcher icons"
 "${VENV_DIR}/bin/python" - <<'PY'
@@ -44,8 +44,8 @@ if image.getpixel((32, 2))[3] == 0 or image.getpixel((2, 32))[3] == 0:
     raise SystemExit('64px icon appears cropped')
 PY
 
-log "Running upstream unit tests"
-(cd "${UPSTREAM_DIR}" && "${VENV_DIR}/bin/python" -m unittest -v)
+log "Running fnOS source unit tests"
+(cd "${SOURCE_DIR}" && "${VENV_DIR}/bin/python" -m unittest -v)
 
 log "Validating fresh data-share mapping"
 rm -rf "${DATA_MAP_DIR}"
@@ -433,4 +433,4 @@ fi
 kill "${server_pid}" 2>/dev/null || true
 wait "${server_pid}" 2>/dev/null || true
 trap - EXIT
-log "Upstream tests and packaged smoke test passed"
+log "fnOS source tests and packaged smoke test passed"
